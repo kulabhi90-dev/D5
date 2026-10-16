@@ -60,7 +60,7 @@ public class UserServlet extends HttpServlet {
 
     private static String validate(String name, String email, String city) {
         if (name.isEmpty() || email.isEmpty() || city.isEmpty() || Gender.isEmpty()) return "All fields are required.";
-        if (name.length() > 10 || city.length() > 10 || email.length() > 150 || Gender.() >150) return "One of the values is too long.";
+        if (name.length() > 10 || city.length() > 10 || email.length() > 150 || Gender.length() >150) return "One of the values is too long.";
         if (!EMAIL.matcher(email).matches()) return "Please enter a valid email address.";
         return null;
     }
