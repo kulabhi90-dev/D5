@@ -45,6 +45,7 @@ public class UserServlet extends HttpServlet {
                 ps.setString(1, fullName);
                 ps.setString(2, email);
                 ps.setString(3, city);
+                ps.setString(3, Gender);
                 ps.executeUpdate();
                 flash(req, "success", "Thank you, " + fullName + ". Your details were saved.");
             } catch (Exception e) {
