@@ -35,6 +35,7 @@ public class UserServlet extends HttpServlet {
         String fullName = trim(req.getParameter("fullName"));
         String email = trim(req.getParameter("emailAddress"));
         String city = trim(req.getParameter("city"));
+        String city = trim(req.getParameter("Gender"));
 
         String error = validate(fullName, email, city);
         if (error != null) {
@@ -58,8 +59,8 @@ public class UserServlet extends HttpServlet {
     }
 
     private static String validate(String name, String email, String city) {
-        if (name.isEmpty() || email.isEmpty() || city.isEmpty()) return "All fields are required.";
-        if (name.length() > 100 || city.length() > 100 || email.length() > 150) return "One of the values is too long.";
+        if (name.isEmpty() || email.isEmpty() || city.isEmpty() || Gender.isEmpty()) return "All fields are required.";
+        if (name.length() > 10 || city.length() > 10 || email.length() > 150 || Gender.() >150) return "One of the values is too long.";
         if (!EMAIL.matcher(email).matches()) return "Please enter a valid email address.";
         return null;
     }
