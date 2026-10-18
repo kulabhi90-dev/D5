@@ -67,11 +67,14 @@ public class UserServlet extends HttpServlet {
 
     // FIX 5: Updated method signature and validation rules to handle the gender variable
     private static String validate(String name, String email, String city, String gender) {
-        if (name.isEmpty() || email.isEmpty() || city.isEmpty() || gender.isEmpty()) return "All fields are required.";
-        if (name.length() > 100 || city.length() > 100 || email.length() > 150 || gender.length() > 150) return "One of the values is too long.";
-        if (!EMAIL.matcher(email).matches()) return "Please enter a valid email address.";
-        return null;
-    }
+    if (name.isEmpty() || email.isEmpty() || city.isEmpty() || gender.isEmpty()) return "All fields are required.";
+    if (name.length() > 100)   return "Full name is too long (" + name.length() + " > 100).";
+    if (city.length() > 100)   return "City is too long (" + city.length() + " > 100).";
+    if (email.length() > 150)  return "Email is too long (" + email.length() + " > 150).";
+    if (gender.length() > 150) return "Gender is too long (" + gender.length() + " > 150).";
+    if (!EMAIL.matcher(email).matches()) return "Please enter a valid email address.";
+    return null;
+}
 
     private static String trim(String s) {
         return s == null ? "" : s.trim();
