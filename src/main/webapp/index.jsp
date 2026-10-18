@@ -38,7 +38,7 @@
     <form action="${pageContext.request.contextPath}/submit" method="post">
         <div class="field">
             <label for="fullName">Full Name</label>
-            <input type="text" id="fullName" name="fullName" maxlength="50" required>
+            <input type="text" id="fullName" name="fullName" maxlength="100" required>
         </div>
         <div class="field">
             <label for="Gender">Gender</label>
@@ -46,11 +46,11 @@
         </div>
         <div class="field">
             <label for="emailAddress">Email Address</label>
-            <input type="email" id="emailAddress" name="emailAddress" maxlength="100" required>
+            <input type="email" id="emailAddress" name="emailAddress" maxlength="150" required>
         </div>
         <div class="field">
             <label for="city">City</label>
-            <input type="text" id="city" name="city" maxlength="50" required>
+            <input type="text" id="city" name="city" maxlength="100" required>
         </div>
         <button type="submit">Submit</button>
     </form>
