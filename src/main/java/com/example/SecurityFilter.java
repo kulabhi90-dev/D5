@@ -1,93 +1,58 @@
 package com.example;
 
-import java.io.IOException;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import javax.servlet.Filter;
-import javax.servlet.FilterChain;
-import javax.servlet.FilterConfig;
-import javax.servlet.ServletException;
-import javax.servlet.ServletRequest;
-import javax.servlet.ServletResponse;
-import javax.servlet.annotation.WebFilter;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import jakarta.servlet.Filter;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.ServletRequest;
+import jakarta.servlet.ServletResponse;
+import jakarta.servlet.annotation.WebFilter;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+
+/**
+ * Protects every /api/* URL. The caller must send:  Authorization: Bearer <API_TOKEN>
+ * API_TOKEN is an App Service application setting (never hard-code it in GitHub).
+ */
 @WebFilter("/api/*")
 public class SecurityFilter implements Filter {
 
     @Override
-    public void init(FilterConfig filterConfig) throws ServletException {}
-
-    @Override
     public void doFilter(ServletRequest request, ServletResponse response, FilterChain chain)
             throws IOException, ServletException {
-        
-        HttpServletRequest httpRequest = (HttpServletRequest) request;
-        HttpServletResponse httpResponse = (HttpServletResponse) response;
 
-        if ("OPTIONS".equalsIgnoreCase(httpRequest.getMethod())) {
-            chain.doFilter(request, response);
+        HttpServletRequest req = (HttpServletRequest) request;
+        HttpServletResponse resp = (HttpServletResponse) response;
+
+        String expected = System.getenv("API_TOKEN");
+        String header = req.getHeader("Authorization");
+
+        if (expected == null || expected.isBlank()) {
+            reject(resp, 500, "API_TOKEN is not configured on the server.");
             return;
         }
-
-        // 1. Extract Token from Header
-        String authHeader = httpRequest.getHeader("Authorization");
-        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
-            httpResponse.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-            httpResponse.setContentType("application/json");
-            httpResponse.getWriter().write("{\"error\": \"Missing or invalid token.\"}");
+        if (header == null || !header.startsWith("Bearer ")) {
+            reject(resp, 401, "Missing or invalid token.");
             return;
         }
-        String token = authHeader.substring(7);
-
-        // 2. Identify the sender from the token string
-        String senderUsername = getUsernameFromToken(token); 
-
-        // 3. DYNAMIC CHECK: Query Azure SQL to see if this user is in the allowed list
-        if (senderUsername == null || !isUserAllowed(senderUsername)) {
-            httpResponse.setStatus(HttpServletResponse.SC_FORBIDDEN); // 403 Forbidden
-            httpResponse.setContentType("application/json");
-            httpResponse.getWriter().write("{\"error\": \"Access Denied. You are not on the authorized sender list.\"}");
-            return; 
+        String token = header.substring(7).trim();
+        boolean ok = MessageDigest.isEqual(
+                token.getBytes(StandardCharsets.UTF_8),
+                expected.trim().getBytes(StandardCharsets.UTF_8));
+        if (!ok) {
+            reject(resp, 403, "Access denied.");
+            return;
         }
-
-        // Success: Forward the request to your servlet
-        httpRequest.setAttribute("currentSender", senderUsername);
         chain.doFilter(request, response);
     }
 
-    // Connects to Azure SQL to check if the sender exists in the AllowedSenders table
-    private boolean isUserAllowed(String username) {
-        String query = "SELECT COUNT(*) AS user_count FROM AllowedSenders WHERE LOWER(Username) = LOWER(?)";
-        
-        try (Connection conn = Db.getConnection(); // Uses your existing Db.java
-             PreparedStatement stmt = conn.prepareStatement(query)) {
-            
-            stmt.setString(1, username);
-            
-            try (ResultSet rs = stmt.executeQuery()) {
-                if (rs.next()) {
-                    return rs.getInt("user_count") > 0; // Returns true if user is found in the table
-                }
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        return false; // Safely deny access if a database error happens
+    private static void reject(HttpServletResponse resp, int status, String msg) throws IOException {
+        resp.setStatus(status);
+        resp.setContentType("application/json");
+        resp.setCharacterEncoding("UTF-8");
+        resp.getWriter().write("{\"error\":\"" + msg + "\"}");
     }
-
-    // Temporary method mapping tokens to test users
-    private String getUsernameFromToken(String token) {
-        if ("token-for-abhi-123".equals(token)) {
-            return "abhi";
-        } else if ("token-for-john-456".equals(token)) {
-            return "john";
-        }
-        return null; 
-    }
-
-    @Override
-    public void destroy() {}
 }
