@@ -14,6 +14,8 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -32,8 +34,10 @@ import java.util.regex.Pattern;
  *  DELETE /api/users/{id}            -> delete one user
  *  DELETE /api/users?city=Mumbai     -> delete every user matching the filters
  *
- *  Filters (query string, exact match, not case-sensitive, can be combined with AND):
- *     name, email, city, gender      e.g.  ?city=Mumbai   or   ?city=Mumbai&gender=Male
+ *  Filters (query string, case-insensitive exact match, combined with AND):
+ *     id, name (or fullName), email (or emailAddress), city, gender, createdDate (yyyy-MM-dd, UTC)
+ *     e.g.  ?city=mumbai   or   ?city=MUMBAI&gender=male   or   ?createdDate=2026-10-19
+ *     Unknown filter names are rejected with 400 so a typo can never widen a delete.
  *
  *  JSON fields: fullName, emailAddress, city, gender
  */
@@ -59,13 +63,19 @@ public class UsersApiServlet extends HttpServlet {
         MAX_LEN.put("gender", 50);
     }
 
-    /** Query-string filter -> database column. */
-    private static final Map<String, String> FILTERS = new LinkedHashMap<>();
+    /** Text filters: query-string name -> database column (compared case-insensitively). */
+    private static final Map<String, String> TEXT_FILTERS = new LinkedHashMap<>();
+    private static final List<String> ALLOWED_FILTERS = new ArrayList<>();
     static {
-        FILTERS.put("name", "full_name");
-        FILTERS.put("email", "email_address");
-        FILTERS.put("city", "city");
-        FILTERS.put("gender", "gender");
+        TEXT_FILTERS.put("name", "full_name");
+        TEXT_FILTERS.put("fullName", "full_name");
+        TEXT_FILTERS.put("email", "email_address");
+        TEXT_FILTERS.put("emailAddress", "email_address");
+        TEXT_FILTERS.put("city", "city");
+        TEXT_FILTERS.put("gender", "gender");
+        ALLOWED_FILTERS.addAll(TEXT_FILTERS.keySet());
+        ALLOWED_FILTERS.add("id");
+        ALLOWED_FILTERS.add("createdDate");
     }
 
     /** HttpServlet has no doPatch, so route PATCH ourselves. */
@@ -85,10 +95,14 @@ public class UsersApiServlet extends HttpServlet {
         String path = req.getPathInfo();
         boolean one = path != null && path.length() > 1;
 
-        List<String> values = new ArrayList<>();
-        String sql;
-        if (one) sql = "SELECT " + COLS + " FROM dbo.users WHERE id = ?";
-        else sql = "SELECT " + COLS + " FROM dbo.users" + buildFilter(req, values) + " ORDER BY id";
+        Filter f = null;
+        if (!one) {
+            f = buildFilter(req);
+            if (f.error != null) { send(resp, 400, err(f.error)); return; }
+        }
+        String sql = one
+                ? "SELECT " + COLS + " FROM dbo.users WHERE id = ?"
+                : "SELECT " + COLS + " FROM dbo.users" + f.where + " ORDER BY id";
 
         try (Connection con = Db.getConnection(); PreparedStatement ps = con.prepareStatement(sql)) {
             if (one) {
@@ -96,8 +110,7 @@ public class UsersApiServlet extends HttpServlet {
                 if (id == null) { send(resp, 400, err("id must be a number")); return; }
                 ps.setInt(1, id);
             } else {
-                int i = 1;
-                for (String v : values) ps.setString(i++, v);
+                bind(ps, f.values);
             }
             List<Map<String, Object>> rows = new ArrayList<>();
             try (ResultSet rs = ps.executeQuery()) {
@@ -215,6 +228,18 @@ public class UsersApiServlet extends HttpServlet {
         String path = req.getPathInfo();
         boolean byId = path != null && path.length() > 1;
 
+        Filter f = null;
+        if (!byId) {
+            f = buildFilter(req);
+            if (f.error != null) { send(resp, 400, err(f.error)); return; }
+            if (f.where.isEmpty()) {
+                // Never allow "delete everything" by accident.
+                send(resp, 400, err("Provide an id (DELETE /api/users/5) or at least one filter: "
+                        + "id, name, email, city, gender, createdDate (e.g. DELETE /api/users?city=mumbai)."));
+                return;
+            }
+        }
+
         try (Connection con = Db.getConnection()) {
             if (byId) {
                 Integer id = parseId(path);
@@ -227,31 +252,17 @@ public class UsersApiServlet extends HttpServlet {
                 return;
             }
 
-            List<String> values = new ArrayList<>();
-            String where = buildFilter(req, values);
-            if (where.isEmpty()) {
-                // Never allow "delete everything" by accident.
-                send(resp, 400, err("Provide an id (DELETE /api/users/5) or at least one filter: "
-                        + "name, email, city, gender (e.g. DELETE /api/users?city=Mumbai)."));
-                return;
-            }
-            try (PreparedStatement ps = con.prepareStatement("DELETE FROM dbo.users" + where)) {
-                int i = 1;
-                for (String v : values) ps.setString(i++, v);
+            try (PreparedStatement ps = con.prepareStatement("DELETE FROM dbo.users" + f.where)) {
+                bind(ps, f.values);
                 int n = ps.executeUpdate();
-                Map<String, Object> filters = new LinkedHashMap<>();
-                for (String k : FILTERS.keySet()) {
-                    String v = clean(req.getParameter(k));
-                    if (!v.isEmpty()) filters.put(k, v);
-                }
                 if (n == 0) {
                     Map<String, Object> m = err("No users matched");
-                    m.put("filters", filters);
+                    m.put("filters", f.applied);
                     send(resp, 404, m);
                 } else {
                     Map<String, Object> out = new LinkedHashMap<>();
                     out.put("deletedCount", n);
-                    out.put("filters", filters);
+                    out.put("filters", f.applied);
                     send(resp, 200, out);
                 }
             }
@@ -312,17 +323,70 @@ public class UsersApiServlet extends HttpServlet {
         }
     }
 
-    /** Builds " WHERE a = ? AND b = ?" from the query string and fills `values`. "" if no filter given. */
-    private static String buildFilter(HttpServletRequest req, List<String> values) {
-        List<String> parts = new ArrayList<>();
-        for (Map.Entry<String, String> e : FILTERS.entrySet()) {
-            String v = clean(req.getParameter(e.getKey()));
-            if (!v.isEmpty()) {
-                parts.add(e.getValue() + " = ?");   // column names come from our own whitelist
-                values.add(v);
+    /** The result of reading the query string: a WHERE clause, its values, or an error message. */
+    private static final class Filter {
+        String where = "";
+        String error;
+        final List<Object> values = new ArrayList<>();
+        final Map<String, Object> applied = new LinkedHashMap<>();
+    }
+
+    /**
+     * Reads ?id=, ?name=, ?email=, ?city=, ?gender=, ?createdDate= from the query string.
+     * Text filters ignore upper/lower case (LOWER on both sides, whatever the database collation is).
+     * Any unknown parameter is rejected so a typo can never turn a narrow delete into a wide one.
+     */
+    private static Filter buildFilter(HttpServletRequest req) {
+        Filter f = new Filter();
+
+        for (String param : req.getParameterMap().keySet()) {
+            if (!ALLOWED_FILTERS.contains(param)) {
+                f.error = "Unknown filter '" + param + "'. Allowed: " + String.join(", ", ALLOWED_FILTERS) + ".";
+                return f;
             }
         }
-        return parts.isEmpty() ? "" : " WHERE " + String.join(" AND ", parts);
+
+        List<String> parts = new ArrayList<>();
+
+        for (Map.Entry<String, String> e : TEXT_FILTERS.entrySet()) {
+            String v = clean(req.getParameter(e.getKey()));
+            if (v.isEmpty()) continue;
+            parts.add("LOWER(" + e.getValue() + ") = LOWER(?)");   // column names come from our own whitelist
+            f.values.add(v);
+            f.applied.put(e.getKey(), v);
+        }
+
+        String id = clean(req.getParameter("id"));
+        if (!id.isEmpty()) {
+            try {
+                f.values.add(Integer.valueOf(id));
+            } catch (NumberFormatException ex) {
+                f.error = "id must be a number";
+                return f;
+            }
+            parts.add("id = ?");
+            f.applied.put("id", id);
+        }
+
+        String date = clean(req.getParameter("createdDate"));
+        if (!date.isEmpty()) {
+            try {
+                f.values.add(java.sql.Date.valueOf(LocalDate.parse(date)));
+            } catch (DateTimeParseException ex) {
+                f.error = "createdDate must look like 2026-10-19";
+                return f;
+            }
+            parts.add("CONVERT(date, created_at) = ?");
+            f.applied.put("createdDate", date);
+        }
+
+        if (!parts.isEmpty()) f.where = " WHERE " + String.join(" AND ", parts);
+        return f;
+    }
+
+    private static void bind(PreparedStatement ps, List<Object> values) throws Exception {
+        int i = 1;
+        for (Object v : values) ps.setObject(i++, v);
     }
 
     private static String clean(String s) {
