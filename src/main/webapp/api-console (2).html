@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>User API console</title>
+<style>
+:root{--bg:#f3f5f7;--card:#fff;--ink:#17212b;--mute:#5d6b79;--line:#d9dee3;--accent:#0a6c74;--accent-ink:#fff;--danger:#b3261e;--okbg:#e2f4e8;--ok:#13703a;--warnbg:#fff0d4;--warn:#8f5200;--badbg:#fde6e4;--bad:#a8231b;--code:#eef1f4}
+@media (prefers-color-scheme:dark){:root{--bg:#12171c;--card:#1b222a;--ink:#e6ebf0;--mute:#97a4b1;--line:#2f3943;--accent:#4fc3cc;--accent-ink:#06282b;--danger:#ff8a80;--okbg:#16301f;--ok:#79d99a;--warnbg:#38290d;--warn:#f0b64d;--badbg:#3b1b19;--bad:#ff9d94;--code:#11171c}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 "Segoe UI",system-ui,-apple-system,sans-serif}
+main{max-width:980px;margin:0 auto;padding:24px 16px 64px}
+h1{font-size:22px;margin:0 0 4px}
+.sub{color:var(--mute);margin:0 0 20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:16px;margin-bottom:16px}
+.row{display:flex;flex-wrap:wrap;gap:12px}
+.field{display:flex;flex-direction:column;gap:4px;flex:1 1 180px;min-width:0}
+label{font-size:13px;color:var(--mute)}
+input{font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:6px;padding:8px 10px;width:100%}
+input:focus,button:focus-visible,[role=tab]:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.hint{font-size:12px;color:var(--mute)}
+.check{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--mute);margin-top:8px}
+.check input{width:auto}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:16px;flex-wrap:wrap}
+[role=tab]{font:inherit;background:none;border:0;border-bottom:3px solid transparent;color:var(--mute);padding:8px 14px;cursor:pointer}
+[role=tab][aria-selected=true]{color:var(--ink);border-bottom-color:var(--accent);font-weight:600}
+.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+button.btn{font:inherit;border-radius:6px;padding:8px 14px;cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+button.danger{color:var(--danger);border-color:var(--danger)}
+button.small{padding:3px 9px;font-size:13px}
+button:disabled{opacity:.5;cursor:wait}
+.tablewrap{overflow-x:auto;margin-top:14px}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{color:var(--mute);font-weight:600}
+td.act{display:flex;gap:6px}
+.count{margin-top:14px;color:var(--mute);font-size:13px}
+.status{display:inline-block;border-radius:4px;padding:1px 8px;font-weight:600;font-size:13px}
+.s-ok{background:var(--okbg);color:var(--ok)}.s-warn{background:var(--warnbg);color:var(--warn)}.s-bad{background:var(--badbg);color:var(--bad)}
+.meta{color:var(--mute);font-size:13px;margin-left:8px}
+pre{margin:10px 0 0;background:var(--code);border-radius:6px;padding:12px;max-height:320px;overflow:auto;font:13px/1.45 Consolas,"SFMono-Regular",monospace;white-space:pre-wrap;word-break:break-word}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<main>
+  <h1>User API console</h1>
+  <p class="sub">Search, add, update and delete users through the API without Postman.</p>
+
+  <section class="card" aria-label="Connection">
+    <div class="row">
+      <div class="field"><label for="base">API address</label><input id="base" autocomplete="off"></div>
+      <div class="field"><label for="token">Token</label><input id="token" type="password" autocomplete="off" placeholder="The plain token, not the hash"></div>
+    </div>
+    <label class="check"><input id="remember" type="checkbox"> Keep the token for this browser tab only</label>
+  </section>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" id="t-find" aria-selected="true" aria-controls="p-find">Find and delete</button>
+    <button role="tab" id="t-add" aria-selected="false" aria-controls="p-add">Add user</button>
+    <button role="tab" id="t-edit" aria-selected="false" aria-controls="p-edit">Update user</button>
+  </div>
+
+  <section class="card" id="p-find" role="tabpanel" aria-labelledby="t-find">
+    <div class="row">
+      <div class="field"><label for="f-id">Id</label><input id="f-id" placeholder="11 or 11,12"></div>
+      <div class="field"><label for="f-name">Full name</label><input id="f-name"></div>
+      <div class="field"><label for="f-email">Email</label><input id="f-email"></div>
+      <div class="field"><label for="f-city">City</label><input id="f-city"></div>
+      <div class="field"><label for="f-gender">Gender</label><input id="f-gender"></div>
+      <div class="field"><label for="f-date">Created on</label><input id="f-date" type="date"></div>
+    </div>
+    <p class="hint">Filters match the whole value and ignore upper and lower case. Leave all empty to list everyone.</p>
+    <div class="actions">
+      <button class="btn primary" id="b-search">Search</button>
+      <button class="btn danger" id="b-delete">Delete all matches</button>
+      <button class="btn" id="b-clear">Clear filters</button>
+    </div>
+    <div class="count" id="count" hidden></div>
+    <div class="tablewrap" id="results"></div>
+  </section>
+
+  <section class="card" id="p-add" role="tabpanel" aria-labelledby="t-add" hidden>
+    <div class="row">
+      <div class="field"><label for="a-name">Full name</label><input id="a-name"></div>
+      <div class="field"><label for="a-email">Email</label><input id="a-email" type="email"></div>
+      <div class="field"><label for="a-city">City</label><input id="a-city"></div>
+      <div class="field"><label for="a-gender">Gender</label><input id="a-gender" list="genders"></div>
+    </div>
+    <div class="actions"><button class="btn primary" id="b-add">Add user</button></div>
+  </section>
+
+  <section class="card" id="p-edit" role="tabpanel" aria-labelledby="t-edit" hidden>
+    <div class="row">
+      <div class="field" style="flex:0 1 140px"><label for="e-id">Id</label><input id="e-id" inputmode="numeric"></div>
+      <div class="field"><label for="e-name">Full name</label><input id="e-name"></div>
+      <div class="field"><label for="e-email">Email</label><input id="e-email" type="email"></div>
+      <div class="field"><label for="e-city">City</label><input id="e-city"></div>
+      <div class="field"><label for="e-gender">Gender</label><input id="e-gender" list="genders"></div>
+    </div>
+    <p class="hint">Change selected fields updates only the boxes you fill in. Replace all fields needs every box filled in.</p>
+    <div class="actions">
+      <button class="btn primary" id="b-patch">Change selected fields</button>
+      <button class="btn" id="b-put">Replace all fields</button>
+    </div>
+  </section>
+
+  <datalist id="genders"><option value="Male"><option value="Female"><option value="Other"></datalist>
+
+  <section class="card" aria-live="polite">
+    <div><strong>Response</strong><span id="status"></span><span class="meta" id="meta"></span></div>
+    <pre id="out">Nothing sent yet.</pre>
+  </section>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const FALLBACK = "https://abhishekk-a2h2cfhpa6cvcmgs.westus3-01.azurewebsites.net";
+$("#base").value = location.protocol.startsWith("http") ? location.origin : FALLBACK;
+try { const t = sessionStorage.getItem("d5token"); if (t) { $("#token").value = t; $("#remember").checked = true; } } catch (e) {}
+
+/* ---------- tabs ---------- */
+const TABS = ["find", "add", "edit"];
+function showTab(name) {
+  TABS.forEach(t => {
+    $("#t-" + t).setAttribute("aria-selected", String(t === name));
+    $("#p-" + t).hidden = t !== name;
+  });
+}
+TABS.forEach(t => $("#t-" + t).addEventListener("click", () => showTab(t)));
+
+/* ---------- request helper ---------- */
+async function call(method, path, body, quiet) {
+  const token = $("#token").value.trim();
+  if (!token) { alert("Enter your token first."); return null; }
+  try {
+    if ($("#remember").checked) sessionStorage.setItem("d5token", token); else sessionStorage.removeItem("d5token");
+  } catch (e) {}
+  const base = $("#base").value.trim().replace(/\/+$/, "");
+  const t0 = performance.now();
+  try {
+    const res = await fetch(base + path, {
+      method,
+      headers: Object.assign({ Authorization: "Bearer " + token }, body ? { "Content-Type": "application/json" } : {}),
+      body: body ? JSON.stringify(body) : undefined
+    });
+    const text = await res.text();
+    let data; try { data = JSON.parse(text); } catch (e) { data = text.length > 400 ? text.slice(0, 400) + " ..." : text; }
+    if (!quiet) show(res.status, data, Math.round(performance.now() - t0), method + " " + path);
+    return { status: res.status, data };
+  } catch (e) {
+    if (!quiet) show(0, "Could not reach the server. Check the API address and your connection.", 0, method + " " + path);
+    return null;
+  }
+}
+function show(status, data, ms, label) {
+  const s = $("#status");
+  s.textContent = status ? " " + status : " No response";
+  s.className = "status " + (status >= 200 && status < 300 ? "s-ok" : status >= 500 || !status ? "s-bad" : "s-warn");
+  $("#meta").textContent = label ? label + (ms ? "  " + ms + " ms" : "") : "";
+  $("#out").textContent = typeof data === "string" ? data : JSON.stringify(data, null, 2);
+}
+function busy(btn, on) { btn.disabled = on; }
+
+/* ---------- find / delete ---------- */
+const FILTERS = [["id", "#f-id"], ["name", "#f-name"], ["email", "#f-email"], ["city", "#f-city"], ["gender", "#f-gender"], ["createdDate", "#f-date"]];
+function filterQuery() {
+  const p = new URLSearchParams();
+  FILTERS.forEach(([k, sel]) => { const v = $(sel).value.trim(); if (v) p.set(k, v); });
+  return p.toString();
+}
+async function search(quiet) {
+  const q = filterQuery();
+  const r = await call("GET", "/api/users" + (q ? "?" + q : ""), null, quiet);
+  if (r && Array.isArray(r.data)) render(r.data);
+  else { $("#results").replaceChildren(); $("#count").hidden = true; }
+  return r;
+}
+function render(rows) {
+  const count = $("#count");
+  count.hidden = false;
+  count.textContent = rows.length === 0 ? "No users match these filters." : rows.length + (rows.length === 1 ? " user found" : " users found");
+  const wrap = $("#results");
+  wrap.replaceChildren();
+  if (!rows.length) return;
+  const cols = [["id", "Id"], ["fullName", "Full name"], ["emailAddress", "Email"], ["city", "City"], ["gender", "Gender"], ["createdAt", "Created (UTC)"]];
+  const table = document.createElement("table");
+  const head = table.createTHead().insertRow();
+  cols.forEach(c => { const th = document.createElement("th"); th.textContent = c[1]; head.appendChild(th); });
+  head.appendChild(document.createElement("th"));
+  const body = table.createTBody();
+  rows.forEach(u => {
+    const tr = body.insertRow();
+    cols.forEach(c => { tr.insertCell().textContent = u[c[0]] == null ? "" : u[c[0]]; });
+    const cell = tr.insertCell(); cell.className = "act";
+    const edit = document.createElement("button");
+    edit.className = "btn small"; edit.textContent = "Edit";
+    edit.addEventListener("click", () => {
+      $("#e-id").value = u.id; $("#e-name").value = u.fullName || ""; $("#e-email").value = u.emailAddress || "";
+      $("#e-city").value = u.city || ""; $("#e-gender").value = u.gender || "";
+      showTab("edit"); window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+    const del = document.createElement("button");
+    del.className = "btn small danger"; del.textContent = "Delete";
+    del.addEventListener("click", async () => {
+      if (!confirm("Delete user " + u.id + " (" + u.fullName + ")? This cannot be undone.")) return;
+      await call("DELETE", "/api/users/" + u.id);
+      search(true);
+    });
+    cell.append(edit, del);
+  });
+  wrap.appendChild(table);
+}
+$("#b-search").addEventListener("click", async e => { busy(e.target, true); await search(false); busy(e.target, false); });
+$("#b-clear").addEventListener("click", () => { FILTERS.forEach(([, sel]) => $(sel).value = ""); });
+$("#b-delete").addEventListener("click", async e => {
+  const q = filterQuery();
+  if (!q) { alert("Add at least one filter first. Deleting everyone is not allowed from here."); return; }
+  busy(e.target, true);
+  const preview = await call("GET", "/api/users?" + q, null, true);
+  if (!preview || !Array.isArray(preview.data)) {
+    show(preview ? preview.status : 0, preview ? preview.data : "Could not check the matches first, so nothing was deleted.", 0, "Check before delete");
+  } else if (preview.data.length === 0) {
+    render([]);
+  } else {
+    render(preview.data);
+    if (confirm("Delete " + preview.data.length + " user(s) that match these filters? This cannot be undone.")) {
+      await call("DELETE", "/api/users?" + q);
+      await search(true);
+    }
+  }
+  busy(e.target, false);
+});
+
+/* ---------- add ---------- */
+$("#b-add").addEventListener("click", async e => {
+  busy(e.target, true);
+  const r = await call("POST", "/api/users", {
+    fullName: $("#a-name").value, emailAddress: $("#a-email").value, city: $("#a-city").value, gender: $("#a-gender").value
+  });
+  if (r && r.status === 201) ["#a-name", "#a-email", "#a-city", "#a-gender"].forEach(s => $(s).value = "");
+  busy(e.target, false);
+});
+
+/* ---------- update ---------- */
+function editBody(onlyFilled) {
+  const all = { fullName: $("#e-name").value, emailAddress: $("#e-email").value, city: $("#e-city").value, gender: $("#e-gender").value };
+  if (!onlyFilled) return all;
+  const out = {}; Object.keys(all).forEach(k => { if (all[k].trim()) out[k] = all[k]; });
+  return out;
+}
+async function update(method, btn) {
+  const id = $("#e-id").value.trim();
+  if (!/^\d+$/.test(id)) { alert("Enter the numeric id of the user to update."); return; }
+  const body = editBody(method === "PATCH");
+  if (method === "PATCH" && !Object.keys(body).length) { alert("Fill in at least one field to change."); return; }
+  busy(btn, true);
+  await call(method, "/api/users/" + id, body);
+  busy(btn, false);
+}
+$("#b-patch").addEventListener("click", e => update("PATCH", e.target));
+$("#b-put").addEventListener("click", e => update("PUT", e.target));
+</script>
+</body>
+</html>
