@@ -17,6 +17,7 @@ import java.sql.Statement;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,6 +38,7 @@ import java.util.regex.Pattern;
  *  Filters (query string, case-insensitive exact match, combined with AND):
  *     id, name (or fullName), email (or emailAddress), city, gender, createdDate (yyyy-MM-dd, UTC)
  *     e.g.  ?city=mumbai   or   ?city=MUMBAI&gender=male   or   ?createdDate=2026-10-19
+ *     id accepts several values:  ?id=11,12   or   ?id=11&id=12
  *     Unknown filter names are rejected with 400 so a typo can never widen a delete.
  *
  *  JSON fields: fullName, emailAddress, city, gender
@@ -356,16 +358,31 @@ public class UsersApiServlet extends HttpServlet {
             f.applied.put(e.getKey(), v);
         }
 
-        String id = clean(req.getParameter("id"));
-        if (!id.isEmpty()) {
-            try {
-                f.values.add(Integer.valueOf(id));
-            } catch (NumberFormatException ex) {
-                f.error = "id must be a number";
+        // id accepts one or many:  ?id=11   ?id=11,12   ?id=11&id=12
+        String[] rawIds = req.getParameterValues("id");
+        if (rawIds != null) {
+            List<Integer> ids = new ArrayList<>();
+            for (String raw : rawIds) {
+                for (String piece : raw.split(",")) {
+                    String p = piece.trim();
+                    if (p.isEmpty()) continue;
+                    try {
+                        ids.add(Integer.valueOf(p));
+                    } catch (NumberFormatException ex) {
+                        f.error = "id must be a number, or a list like 11,12";
+                        return f;
+                    }
+                }
+            }
+            if (ids.size() > 100) {
+                f.error = "Too many ids (max 100 at once).";
                 return f;
             }
-            parts.add("id = ?");
-            f.applied.put("id", id);
+            if (!ids.isEmpty()) {
+                parts.add("id IN (" + String.join(", ", Collections.nCopies(ids.size(), "?")) + ")");
+                f.values.addAll(ids);
+                f.applied.put("id", ids);
+            }
         }
 
         String date = clean(req.getParameter("createdDate"));
