@@ -10,6 +10,8 @@ import jakarta.servlet.http.HttpSession;
 import java.io.IOException;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.Statement;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
@@ -47,7 +49,7 @@ public class UserServlet extends HttpServlet {
             flash(req, "error", error);
         } else {
             try (Connection con = Db.getConnection();
-                 PreparedStatement ps = con.prepareStatement(INSERT_SQL)) {
+                 PreparedStatement ps = con.prepareStatement(INSERT_SQL, Statement.RETURN_GENERATED_KEYS)) {
                 
                 // FIX 4: Updated parameter indexes sequentially (1 to 4)
                 ps.setString(1, fullName);
@@ -56,6 +58,11 @@ public class UserServlet extends HttpServlet {
                 ps.setString(4, gender);
                 
                 ps.executeUpdate();
+
+                // Send a copy to the D6 review app (background, never blocks or fails the save)
+                try (ResultSet keys = ps.getGeneratedKeys()) {
+                    if (keys.next()) D6Notifier.send(keys.getInt(1), fullName, email, city, gender);
+                }
                 flash(req, "success", "Thank you, " + fullName + ". Your details were saved.");
             } catch (Exception e) {
                 LOG.log(Level.SEVERE, "Could not save user details", e);
