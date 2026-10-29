@@ -153,6 +153,10 @@ public class UsersApiServlet extends HttpServlet {
                 if (keys.next()) out.put("id", keys.getInt(1));
             }
             for (String k : COLUMN.keySet()) out.put(k, str(body, k));
+            if (out.get("id") instanceof Integer newId) {
+                D6Notifier.send(newId, str(body, "fullName"), str(body, "emailAddress"),
+                        str(body, "city"), str(body, "gender"));
+            }
             send(resp, 201, out);
         } catch (Exception e) {
             LOG.log(Level.SEVERE, "POST failed", e);
